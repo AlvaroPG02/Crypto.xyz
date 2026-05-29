@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Criptografia</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <h1>Criptografia</h1>
+      <p class="lead">
+        Escribe una palabra o frase, elige un metodo y observa como se cifra cada caracter paso a paso.
+        Esta pagina muestra algoritmos clasicos de forma visual y educativa.
+      </p>
+      <div class="notice">
+        <strong>Nota:</strong>
+        <span>Estos metodos son demostrativos. Para proteger informacion real se usan sistemas criptograficos modernos y revisados.</span>
+      </div>
+    </header>
+
+    <section class="grid" aria-label="Herramienta de cifrado">
+      <form class="card controls" id="cryptoForm">
+        <div class="field">
+          <label for="plainText">Texto a cifrar</label>
+          <textarea id="plainText" placeholder="Ejemplo: Hola mundo!">Hola mundo!</textarea>
+        </div>
+
+        <div class="field method-field">
+          <label for="method">Metodo</label>
+          <div class="method-picker">
+            <button class="method-trigger" id="methodTrigger" type="button" aria-haspopup="dialog" aria-expanded="false">
+              <span>
+                <span class="method-trigger-label">Metodo seleccionado</span>
+                <strong id="methodTriggerName">Cesar</strong>
+              </span>
+              <span class="method-trigger-icon" aria-hidden="true">v</span>
+            </button>
+            <div class="method-popover" id="methodPopover" role="dialog" aria-label="Elegir metodo" hidden>
+              <button class="method-option is-active" type="button" data-method="caesar">
+                <strong>Cesar</strong>
+                <span>Sustituye cada letra por otra que esta varias posiciones adelante.</span>
+              </button>
+              <button class="method-option" type="button" data-method="vigenere">
+                <strong>Vigenere</strong>
+                <span>Usa una palabra clave repetida para cambiar el desplazamiento.</span>
+              </button>
+              <button class="method-option" type="button" data-method="xor">
+                <strong>XOR</strong>
+                <span>Combina codigos numericos del texto y la clave bit a bit.</span>
+              </button>
+              <button class="method-option" type="button" data-method="playfair">
+                <strong>S06_Playfair</strong>
+                <span>Cifra pares de letras con una matriz construida desde una clave.</span>
+              </button>
+              <button class="method-option" type="button" data-method="autoclave">
+                <strong>Autoclave</strong>
+                <span>Extiende la clave con el propio texto para cambiar cada desplazamiento.</span>
+              </button>
+              <button class="method-option" type="button" data-method="four-square">
+                <strong>S10_Four Square</strong>
+                <span>Usa cuatro matrices para cifrar pares de caracteres.</span>
+              </button>
+            </div>
+          </div>
+          <select class="method-select" id="method" aria-label="Metodo seleccionado">
+            <option value="caesar">Cesar</option>
+            <option value="vigenere">Vigenere</option>
+            <option value="xor">XOR</option>
+            <option value="playfair">Playfair</option>
+            <option value="autoclave">Autoclave</option>
+            <option value="four-square">Four Square</option>
+          </select>
+          <span class="hint" id="methodHint"></span>
+        </div>
+
+        <div class="field" id="alphabetField">
+          <label for="alphabet">Alfabeto</label>
+          <select id="alphabet">
+            <option value="spanish">Español: A-Z con Ñ</option>
+            <option value="english">Ingles: A-Z</option>
+          </select>
+          <span class="hint" id="alphabetHint">En español, la Ñ cuenta como una letra propia.</span>
+        </div>
+
+        <div class="key-row">
+          <div class="field" id="shiftField">
+            <label for="shift">Desplazamiento</label>
+            <input id="shift" type="number" min="0" max="25" value="3">
+            <span class="hint">En Cesar, cada letra avanza esta cantidad de posiciones en el alfabeto.</span>
+          </div>
+
+          <div class="field" id="keywordField" hidden>
+            <label for="keyword">Clave</label>
+            <input id="keyword" type="text" value="clave" autocomplete="off">
+            <span class="hint" id="keywordHint"></span>
+          </div>
+
+          <div class="field" id="keywordTwoField" hidden>
+            <label for="keywordTwo">Clave secundaria</label>
+            <input id="keywordTwo" type="text" value="matriz" autocomplete="off">
+            <span class="hint">Four Square usa esta clave para la matriz inferior izquierda.</span>
+          </div>
+        </div>
+
+        <button class="primary-button" type="submit">Cifrar texto</button>
+        <button class="secondary-button" id="downloadExcel" type="button">Descargar Excel</button>
+      </form>
+
+      <div class="output">
+        <section class="card result-card" aria-live="polite">
+          <div class="section-title">
+            <h2>Resultado cifrado</h2>
+            <span class="pill" id="resultMode">Cesar</span>
+          </div>
+          <div class="result-box" id="result"></div>
+        </section>
+
+        <section class="card result-card" aria-live="polite">
+          <div class="section-title">
+            <h2>Descifrado demostrativo</h2>
+            <span class="pill" id="decryptMode">Reverso</span>
+          </div>
+          <div class="result-box" id="decryptedResult"></div>
+          <p class="hint" id="decryptHint"></p>
+        </section>
+
+        <section class="card matrix-card" id="matrixCard" hidden>
+          <div class="section-title">
+            <h2 id="matrixTitle">Matriz</h2>
+            <span class="pill" id="matrixSize">5x5</span>
+          </div>
+          <div class="matrix-view" id="matrixView" aria-label="Matrices del metodo seleccionado"></div>
+        </section>
+
+        <section class="card steps-card">
+          <div class="section-title">
+            <h2>Paso a paso</h2>
+            <span class="pill" id="stepCount">0 pasos</span>
+          </div>
+          <div class="table-wrap" id="stepsWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Original</th>
+                  <th>Valor usado</th>
+                  <th>Operacion</th>
+                  <th>Cifrado</th>
+                </tr>
+              </thead>
+              <tbody id="stepsBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
