@@ -37,6 +37,7 @@ const hints = {
   vigenere: "Muestra como una clave puede cambiar cada paso del cifrado.",
   xor: "El resultado se muestra en hexadecimal para que sea legible.",
   playfair: "Usa una matriz 5x5; numeros y simbolos se conservan.",
+  beaufort: "Cifra con clave repetida usando clave menos texto.",
   autoclave: "Usa una clave inicial y despues continua con el propio texto.",
   "four-square": "Usa cuatro matrices; en español incluye A-Z, Ñ y los numeros 0-8."
 };
@@ -307,6 +308,45 @@ function decryptVigenere(text, key, config = getAlphabetConfig()) {
   });
 
   return decrypted;
+}
+
+function encryptBeaufort(text, key, config = getAlphabetConfig()) {
+  const normalizedKey = cleanKeyword(key, config) || "CLAVE";
+  const steps = [];
+  let encrypted = "";
+  let letterIndex = 0;
+
+  [...text].forEach((char, index) => {
+    if (!isLetterInAlphabet(char, config)) {
+      encrypted += char;
+      steps.push({
+        index,
+        original: toCodeLabel(char),
+        value: "Clave no avanza",
+        operation: "No es letra: se conserva igual",
+        encrypted: toCodeLabel(char)
+      });
+      return;
+    }
+
+    const keyChar = normalizedKey[letterIndex % normalizedKey.length];
+    const keyPosition = config.letters.indexOf(keyChar);
+    const originalPosition = config.letters.indexOf(normalizeBaseLetter(char));
+    const encryptedPosition = (keyPosition - originalPosition + config.letters.length) % config.letters.length;
+    const encryptedChar = config.letters[encryptedPosition];
+
+    encrypted += isLowerLetter(char) ? encryptedChar.toLocaleLowerCase("es-ES") : encryptedChar;
+    steps.push({
+      index,
+      original: char,
+      value: `Clave "${keyChar}" = ${keyPosition}`,
+      operation: `${keyPosition} - ${originalPosition} = ${keyPosition - originalPosition} -> ${encryptedPosition} mod ${config.letters.length}`,
+      encrypted: isLowerLetter(char) ? encryptedChar.toLocaleLowerCase("es-ES") : encryptedChar
+    });
+    letterIndex += 1;
+  });
+
+  return { encrypted, steps };
 }
 
 function getAutoclaveStream(text, key, config = getAlphabetConfig()) {
@@ -705,9 +745,46 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function getOriginalValueLabel(original) {
+  const config = getAlphabetConfig();
+  const raw = String(original);
+  const codeMatch = raw.match(/\((\d+)\)$/);
+
+  if (codeMatch) {
+    return `Codigo ${codeMatch[1]}`;
+  }
+
+  if (raw === "espacio" || raw === "\\n" || raw === "\\t") {
+    return "No aplica";
+  }
+
+  const values = [...raw]
+    .filter((char) => char !== " ")
+    .map((char) => {
+      if (method.value === "four-square") {
+        const normalized = normalizeFourSquareChar(char);
+        const position = config.fourSquareLetters.indexOf(normalized);
+        return position >= 0 ? `${normalized} = ${position}` : null;
+      }
+
+      if (method.value === "playfair") {
+        const normalized = normalizePlayfairLetter(char, config);
+        const position = config.playfairLetters.indexOf(normalized);
+        return position >= 0 ? `${normalized} = ${position}` : null;
+      }
+
+      const normalized = normalizeBaseLetter(char);
+      const position = config.letters.indexOf(normalized);
+      return position >= 0 ? `${normalized} = ${position}` : null;
+    })
+    .filter(Boolean);
+
+  return values.length ? values.join("; ") : "No aplica";
+}
+
 function renderSteps(steps) {
   if (steps.length === 0) {
-    stepsBody.innerHTML = `<tr><td class="empty" colspan="5">Ingresa texto para ver los pasos del cifrado.</td></tr>`;
+    stepsBody.innerHTML = `<tr><td class="empty" colspan="6">Ingresa texto para ver los pasos del cifrado.</td></tr>`;
     stepCount.textContent = "0 pasos";
     return;
   }
@@ -716,6 +793,7 @@ function renderSteps(steps) {
     <tr>
       <td>${step.index + 1}</td>
       <td><code>${escapeHtml(step.original)}</code></td>
+      <td>${escapeHtml(getOriginalValueLabel(step.original))}</td>
       <td>${escapeHtml(step.value)}</td>
       <td>${escapeHtml(step.operation)}</td>
       <td><code>${escapeHtml(step.encrypted)}</code></td>
@@ -760,6 +838,7 @@ function getMethodName(value = method.value) {
     vigenere: "Vigenere",
     xor: "XOR",
     playfair: "Playfair",
+    beaufort: "Beaufort",
     autoclave: "Autoclave",
     "four-square": "Four Square"
   };
@@ -850,6 +929,16 @@ function buildDecryptProcedure(encrypted, decrypted, config = getAlphabetConfig(
     });
   }
 
+  if (method.value === "beaufort") {
+    return encryptBeaufort(encrypted, keyword.value, config).steps.map((step) => ({
+      index: step.index,
+      original: step.original,
+      value: step.value,
+      operation: `Operacion Beaufort inversa igual al cifrado: ${step.operation}`,
+      encrypted: step.encrypted
+    }));
+  }
+
   if (method.value === "autoclave") {
     const stream = getAutoclaveStream(plainText.value, keyword.value, config);
     let letterIndex = 0;
@@ -910,15 +999,16 @@ function excelEscape(value) {
   return escapeHtml(value).replace(/\n/g, "<br>");
 }
 
-function rowsToHtml(rows) {
+function rowsToHtml(rows, includeOriginalValue = false) {
   if (rows.length === 0) {
-    return "<tr><td colspan=\"5\">Sin pasos para mostrar.</td></tr>";
+    return `<tr><td colspan="${includeOriginalValue ? 6 : 5}">Sin pasos para mostrar.</td></tr>`;
   }
 
   return rows.map((step) => `
     <tr>
       <td>${step.index + 1}</td>
       <td>${excelEscape(step.original)}</td>
+      ${includeOriginalValue ? `<td>${excelEscape(getOriginalValueLabel(step.original))}</td>` : ""}
       <td>${excelEscape(step.value)}</td>
       <td>${excelEscape(step.operation)}</td>
       <td>${excelEscape(step.encrypted)}</td>
@@ -976,8 +1066,8 @@ function downloadCurrentExcel() {
 
         <h2>Procedimiento de cifrado</h2>
         <table border="1">
-          <tr><th>#</th><th>Original</th><th>Valor usado</th><th>Operacion</th><th>Resultado</th></tr>
-          ${rowsToHtml(report.encryptSteps)}
+          <tr><th>#</th><th>Original</th><th>Valor original</th><th>Valor usado</th><th>Operacion</th><th>Resultado</th></tr>
+          ${rowsToHtml(report.encryptSteps, true)}
         </table>
 
         <h2>Procedimiento de descifrado</h2>
@@ -1006,7 +1096,7 @@ function updateMethodUi() {
   const selected = method.value;
   const config = getAlphabetConfig();
   const usesCaesar = selected === "caesar";
-  const usesKeyword = selected === "vigenere" || selected === "xor" || selected === "playfair" || selected === "autoclave" || selected === "four-square";
+  const usesKeyword = selected === "vigenere" || selected === "xor" || selected === "playfair" || selected === "beaufort" || selected === "autoclave" || selected === "four-square";
   const usesSecondKeyword = selected === "four-square";
   const usesAlphabet = selected !== "xor";
 
@@ -1022,6 +1112,8 @@ function updateMethodUi() {
       ? alphabet.value === "spanish"
         ? "En Playfair español, la Ñ se reemplaza por N para mantener una matriz 5x5."
         : "En Playfair ingles, la clave ordena la matriz 5x5; la letra J se une con I."
+      : selected === "beaufort"
+        ? "Beaufort usa esta clave repetida para calcular clave menos texto."
       : selected === "autoclave"
         ? "Autoclave usa esta clave como inicio y despues continua con el texto original."
       : selected === "four-square"
@@ -1032,6 +1124,8 @@ function updateMethodUi() {
     : "En ingles, se usa A-Z; en Playfair y Four Square la J se trata como I.";
   methodHint.textContent = selected === "playfair" && alphabet.value === "spanish"
     ? "Usa una matriz 5x5; la Ñ se convierte en N y la J se trata como I."
+    : selected === "beaufort"
+      ? "Beaufort es reciproco: el mismo procedimiento cifra y descifra."
     : selected === "autoclave"
       ? "La clave extendida se forma con la clave inicial seguida del texto."
     : selected === "four-square" && alphabet.value === "spanish"
@@ -1045,6 +1139,8 @@ function updateMethodUi() {
         ? "XOR"
         : selected === "playfair"
           ? "Playfair"
+          : selected === "beaufort"
+            ? "Beaufort"
           : selected === "autoclave"
             ? "Autoclave"
             : "Four Square";
@@ -1070,6 +1166,10 @@ function encryptCurrentText() {
   } else if (method.value === "vigenere") {
     output = encryptVigenere(text, keyword.value, config);
     decrypted = decryptVigenere(output.encrypted, keyword.value, config);
+  } else if (method.value === "beaufort") {
+    output = encryptBeaufort(text, keyword.value, config);
+    decrypted = encryptBeaufort(output.encrypted, keyword.value, config).encrypted;
+    decryptedHintText = "En Beaufort, el mismo procedimiento sirve para cifrar y descifrar.";
   } else if (method.value === "autoclave") {
     output = encryptAutoclave(text, keyword.value, config);
     decrypted = decryptAutoclave(output.encrypted, keyword.value, config);

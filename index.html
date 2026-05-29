@@ -54,6 +54,10 @@
                 <strong>S06_Playfair</strong>
                 <span>Cifra pares de letras con una matriz construida desde una clave.</span>
               </button>
+              <button class="method-option" type="button" data-method="beaufort">
+                <strong>S08_Beaufort</strong>
+                <span>Usa una clave repetida y cifra restando el texto desde la clave.</span>
+              </button>
               <button class="method-option" type="button" data-method="autoclave">
                 <strong>S09_Autoclave</strong>
                 <span>Extiende la clave con el propio texto para cambiar cada desplazamiento.</span>
@@ -69,6 +73,7 @@
             <option value="vigenere">Vigenere</option>
             <option value="xor">XOR</option>
             <option value="playfair">Playfair</option>
+            <option value="beaufort">Beaufort</option>
             <option value="autoclave">Autoclave</option>
             <option value="four-square">Four Square</option>
           </select>
@@ -145,6 +150,7 @@
                 <tr>
                   <th>#</th>
                   <th>Original</th>
+                  <th>Valor original</th>
                   <th>Valor usado</th>
                   <th>Operacion</th>
                   <th>Cifrado</th>
