@@ -28,6 +28,8 @@ const matrixSize = document.querySelector("#matrixSize");
 const matrixView = document.querySelector("#matrixView");
 const stepsBody = document.querySelector("#stepsBody");
 const stepCount = document.querySelector("#stepCount");
+const decryptStepsBody = document.querySelector("#decryptStepsBody");
+const decryptStepCount = document.querySelector("#decryptStepCount");
 let currentReport = null;
 
 const hints = {
@@ -529,6 +531,28 @@ function decryptPlayfair(text, key, config = getAlphabetConfig()) {
   return decryptedChars.join("");
 }
 
+function getPlayfairDecryptSteps(text, key, config = getAlphabetConfig()) {
+  const { columns, matrix, positions } = buildPlayfairMatrix(key, config);
+  return preparePlayfairDecryptPairs(text, config).map(([firstToken, secondToken], index) => {
+    const transformed = transformPlayfairPair(
+      firstToken.letter,
+      secondToken.letter,
+      matrix,
+      positions,
+      columns,
+      "decrypt"
+    );
+
+    return {
+      index,
+      original: `${firstToken.letter}${secondToken.letter}`,
+      value: `Matriz ${matrix.length}x${columns} con clave "${key || "clave"}"`,
+      operation: `${transformed.rule}. ${firstToken.letter}=fila ${transformed.firstPosition.row + 1}, col ${transformed.firstPosition.column + 1}; ${secondToken.letter}=fila ${transformed.secondPosition.row + 1}, col ${transformed.secondPosition.column + 1}`,
+      encrypted: `${transformed.transformedFirst}${transformed.transformedSecond}`
+    };
+  });
+}
+
 function buildFourSquareMatrices(keyOne, keyTwo, config = getAlphabetConfig()) {
   const letters = config.fourSquareLetters;
   const columns = config.fourSquareColumns;
@@ -626,6 +650,52 @@ function decryptFourSquare(text, keyOne, keyTwo, config = getAlphabetConfig()) {
   return decryptedChars.join("");
 }
 
+function removeFillerX(text, isValidToken, removeDuplicateFillers = false) {
+  const chars = [...text];
+  const tokens = chars
+    .map((char, index) => ({ char, index }))
+    .filter((token) => isValidToken(token.char));
+  const removeIndexes = new Set();
+
+  if (tokens.length > 0 && tokens[tokens.length - 1].char === "X") {
+    removeIndexes.add(tokens[tokens.length - 1].index);
+  }
+
+  if (removeDuplicateFillers) {
+    for (let index = 1; index < tokens.length - 1; index += 1) {
+      const previous = tokens[index - 1].char;
+      const current = tokens[index].char;
+      const next = tokens[index + 1].char;
+      if (current === "X" && previous === next) {
+        removeIndexes.add(tokens[index].index);
+      }
+    }
+  }
+
+  return chars.filter((_, index) => !removeIndexes.has(index)).join("");
+}
+
+function getFourSquareDecryptSteps(text, keyOne, keyTwo, config = getAlphabetConfig()) {
+  const { columns, plainOne, cipherOne, cipherTwo, plainTwo } = buildFourSquareMatrices(keyOne, keyTwo, config);
+
+  return prepareFourSquarePairs(text, config)
+    .filter(([, secondToken]) => secondToken.sourceIndex !== null)
+    .map(([firstToken, secondToken], index) => {
+      const firstPosition = cipherOne.positions[firstToken.letter];
+      const secondPosition = cipherTwo.positions[secondToken.letter];
+      const decryptedFirst = plainOne.matrix[firstPosition.row][secondPosition.column];
+      const decryptedSecond = plainTwo.matrix[secondPosition.row][firstPosition.column];
+
+      return {
+        index,
+        original: `${firstToken.letter}${secondToken.letter}`,
+        value: `Matrices ${plainOne.matrix.length}x${columns} con claves "${keyOne || "clave"}" y "${keyTwo || "matriz"}"`,
+        operation: `${firstToken.letter}=fila ${firstPosition.row + 1}, col ${firstPosition.column + 1} en matriz superior derecha; ${secondToken.letter}=fila ${secondPosition.row + 1}, col ${secondPosition.column + 1} en matriz inferior izquierda. Se cruzan hacia las matrices normales.`,
+        encrypted: `${decryptedFirst}${decryptedSecond}`
+      };
+    });
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -652,6 +722,25 @@ function renderSteps(steps) {
     </tr>
   `).join("");
   stepCount.textContent = `${steps.length} ${steps.length === 1 ? "paso" : "pasos"}`;
+}
+
+function renderDecryptSteps(steps) {
+  if (steps.length === 0) {
+    decryptStepsBody.innerHTML = `<tr><td class="empty" colspan="5">Ingresa texto para ver los pasos del descifrado.</td></tr>`;
+    decryptStepCount.textContent = "0 pasos";
+    return;
+  }
+
+  decryptStepsBody.innerHTML = steps.map((step) => `
+    <tr>
+      <td>${step.index + 1}</td>
+      <td><code>${escapeHtml(step.original)}</code></td>
+      <td>${escapeHtml(step.value)}</td>
+      <td>${escapeHtml(step.operation)}</td>
+      <td><code>${escapeHtml(step.encrypted)}</code></td>
+    </tr>
+  `).join("");
+  decryptStepCount.textContent = `${steps.length} ${steps.length === 1 ? "paso" : "pasos"}`;
 }
 
 function renderMatrixPanel(label, matrix, columns) {
@@ -807,23 +896,11 @@ function buildDecryptProcedure(encrypted, decrypted, config = getAlphabetConfig(
   }
 
   if (method.value === "playfair") {
-    return preparePlayfairDecryptPairs(encrypted, config).map(([firstToken, secondToken], index) => ({
-      index,
-      original: `${firstToken.letter}${secondToken.letter}`,
-      value: `Matriz Playfair con clave "${keyword.value || "clave"}"`,
-      operation: "Se aplica la regla inversa: fila retrocede, columna sube, rectangulo conserva intercambio de columnas.",
-      encrypted: decrypted
-    }));
+    return getPlayfairDecryptSteps(encrypted, keyword.value, config);
   }
 
   if (method.value === "four-square") {
-    return prepareFourSquarePairs(encrypted, config).map(([firstToken, secondToken], index) => ({
-      index,
-      original: `${firstToken.letter}${secondToken.letter}`,
-      value: `Claves "${keyword.value || "clave"}" y "${keywordTwo.value || "matriz"}"`,
-      operation: "Se localiza el par cifrado en las matrices con clave y se cruza hacia las matrices normales.",
-      encrypted: decrypted
-    }));
+    return getFourSquareDecryptSteps(encrypted, keyword.value, keywordTwo.value, config);
   }
 
   return [];
@@ -1000,13 +1077,15 @@ function encryptCurrentText() {
   } else if (method.value === "playfair") {
     output = encryptPlayfair(text, keyword.value, config);
     decrypted = decryptPlayfair(output.encrypted, keyword.value, config);
-    decryptedHintText = "En Playfair el descifrado es normalizado: Ñ aparece como N, J como I y pueden verse X de relleno.";
+    decrypted = removeFillerX(decrypted, (char) => config.playfairLetters.includes(normalizePlayfairLetter(char, config)), true);
+    decryptedHintText = "En Playfair el descifrado es normalizado: Ñ aparece como N, J como I y se eliminan las X de relleno cuando es posible.";
   } else if (method.value === "four-square") {
     output = encryptFourSquare(text, keyword.value, keywordTwo.value, config);
     decrypted = decryptFourSquare(output.encrypted, keyword.value, keywordTwo.value, config);
+    decrypted = removeFillerX(decrypted, (char) => config.fourSquareLetters.includes(normalizeFourSquareChar(char)));
     decryptedHintText = alphabet.value === "spanish"
-      ? "En Four Square español se descifra con A-Z, Ñ y 0-8; otros simbolos se conservan y puede verse X de relleno."
-      : "En Four Square ingles el descifrado es normalizado: J aparece como I y puede verse X de relleno.";
+      ? "En Four Square español se descifra con A-Z, Ñ y 0-8; otros simbolos se conservan y se elimina la X final de relleno cuando es posible."
+      : "En Four Square ingles el descifrado es normalizado: J aparece como I y se elimina la X final de relleno cuando es posible.";
   } else {
     output = encryptXor(text, keyword.value);
     decrypted = decryptXor(output.encrypted, keyword.value);
@@ -1016,6 +1095,7 @@ function encryptCurrentText() {
   decryptedResult.textContent = decrypted || "Sin texto para descifrar.";
   decryptMode.textContent = method.value === "playfair" || method.value === "four-square" ? "Normalizado" : "Reverso";
   decryptHint.textContent = decryptedHintText;
+  const decryptSteps = buildDecryptProcedure(output.encrypted, decrypted, config);
   currentReport = {
     methodName: getMethodName(method.value),
     alphabetLabel: method.value === "xor" ? "No aplica" : config.label,
@@ -1027,13 +1107,14 @@ function encryptCurrentText() {
     decrypted,
     decryptHint: decryptedHintText,
     encryptSteps: output.steps,
-    decryptSteps: buildDecryptProcedure(output.encrypted, decrypted, config),
+    decryptSteps,
     matrices: getMatrixReport(config)
   };
   if (method.value === "playfair" || method.value === "four-square") {
     renderCipherMatrices(config);
   }
   renderSteps(output.steps);
+  renderDecryptSteps(decryptSteps);
 }
 
 form.addEventListener("submit", (event) => {
